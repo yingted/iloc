@@ -75,13 +75,13 @@ def iterratios():
 			rescan_in_replace((t,frame))
 			yield iloc(frame,[rect for ti,rect in rects if ti==t])
 
-			imshow("",frame)
-			while True:
-				k=waitKey(1)
-				if k in(-1,27):
-					break
-			if k==27:
-				break
+			#imshow("",frame)
+			#while True:
+			#	k=waitKey(1)
+			#	if k in(-1,27):
+			#		break
+			#if k==27:
+			#	break
 	finally:
 		rescan_in_replace(None)
 def iloc(frame,rects):
