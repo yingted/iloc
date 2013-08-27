@@ -216,18 +216,74 @@ def iloc(frame,rects):
 	#print"\t".join(map(str,ratios))
 	return ratios
 if __name__=="__main__":
-	decay=.95#don't use time
-	transition=decay*identity(3)+(1-decay)*ones((3,3))/3
-	posterior=ones(3)/3
-	for ratios in iterratios():
-		posterior=dot(transition,posterior)
-		posterior*=array([P(s,ratios)/o["p"]for s,o in prior.iteritems()])
-		if not posterior.sum():
-			posterior=ones(len(prior))
-		posterior/=posterior.sum()
-		#print dict(zip(prior,posterior))
-		#print prior.items()[argmax(posterior)]
-		#guess,prob=zip(*sorted(zip(posterior,prior),reverse=True))[::-1]
-		#print" ".join(guess)," ".join(map("% 5.02f".__mod__,prob))
-		#print{s:"%.02f"%(P(s,ratios)/o["p"])for s,o in prior.iteritems()},len(ratios)," ".join(map("%.04f".__mod__,ratios))
-		print"xrandr --output LVDS1 --brightness",pymin(1,posterior[prior.keys().index("c")]/.8)
+	from os import *
+	from fcntl import flock,LOCK_EX,LOCK_UN
+	from signal import SIGTERM,signal
+	disp=environ["DISPLAY"]
+	if disp[0]!=":":
+		raise ValueError("invalid display",disp)
+	pidpath="/tmp/iloc.%d.pid"%int(float(disp[1:]))
+	class SigTerm(BaseException):
+		pass
+	def handler(signum,frame):
+		raise SigTerm()
+	try:
+		signal(SIGTERM,handler)
+		while True:
+			with fdopen(open(pidpath,O_RDWR|O_CREAT),"w+")as fd:
+				try:
+					flock(fd,LOCK_EX)
+					try:
+						pid=int(fd.read())
+					except ValueError:
+						pass
+					else:
+						if pid==-1:
+							continue
+						try:
+							kill(pid,SIGTERM)
+							break
+						except OSError:
+							pass
+					fd.seek(0)
+					fd.truncate()
+					fd.write("%d\n"%getpid())
+					fd.flush()
+					flock(fd,LOCK_UN)
+
+					from subprocess import call
+					decay=.95#don't use time
+					transition=decay*identity(3)+(1-decay)*ones((3,3))/3
+					posterior=ones(3)/3
+					def set_brightness(brightness):
+						call(("xrandr","--output","LVDS1","--brightness",str(brightness)))
+					try:
+						for ratios in iterratios():
+							posterior=dot(transition,posterior)
+							posterior*=array([P(s,ratios)/o["p"]for s,o in prior.iteritems()])
+							if not posterior.sum():
+								posterior=ones(len(prior))
+							posterior/=posterior.sum()
+							#print dict(zip(prior,posterior))
+							#print prior.items()[argmax(posterior)]
+							#guess,prob=zip(*sorted(zip(posterior,prior),reverse=True))[::-1]
+							#print" ".join(guess)," ".join(map("% 5.02f".__mod__,prob))
+							#print{s:"%.02f"%(P(s,ratios)/o["p"])for s,o in prior.iteritems()},len(ratios)," ".join(map("%.04f".__mod__,ratios))
+							set_brightness(pymin(1,posterior[prior.keys().index("c")]/.8))
+					finally:
+						set_brightness(1)
+				finally:
+					try:
+						flock(fd,LOCK_EX)
+						fd.seek(0)
+						if int(fd.read())==getpid():
+							unlink(pidpath)
+							fd.seek(0)
+							fd.truncate()
+							fd.write("-1\n")
+							fd.flush()
+					except OSError:
+						pass
+			break
+	except SigTerm:
+		pass
