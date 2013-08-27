@@ -44,6 +44,7 @@ def iterratios():
 			for rect in bg_cc.detectMultiScale(frame,1.1,3,0,(40,40),(70,70)):
 				rescan_out.put((t,tuple(rect)))
 	rescan_thd=Thread(target=rescan)
+	rescan_thd.daemon=True
 	rescan_thd.start()
 	def rescan_in_replace(o):
 		try:
@@ -219,6 +220,7 @@ if __name__=="__main__":
 	from os import *
 	from fcntl import flock,LOCK_EX,LOCK_UN
 	from signal import SIGTERM,signal
+	from time import sleep
 	disp=environ["DISPLAY"]
 	if disp[0]!=":":
 		raise ValueError("invalid display",disp)
@@ -257,7 +259,20 @@ if __name__=="__main__":
 					posterior=ones(3)/3
 					def set_brightness(brightness):
 						call(("xrandr","--output","LVDS1","--brightness",str(brightness)))
+					cur_brightness=target_brightness=1
+					def brightness_loop():
+						global cur_brightness
+						while True:
+							tgt=target_brightness
+							if tgt is None:
+								break
+							cur_brightness+=(tgt-cur_brightness)*.3
+							set_brightness(cur_brightness)
+							sleep(1/60.)
+					brightness_thd=Thread(target=brightness_loop)
+					brightness_thd.daemon=True
 					try:
+						brightness_thd.start()
 						for ratios in iterratios():
 							posterior=dot(transition,posterior)
 							posterior*=array([P(s,ratios)/o["p"]for s,o in prior.iteritems()])
@@ -269,8 +284,13 @@ if __name__=="__main__":
 							#guess,prob=zip(*sorted(zip(posterior,prior),reverse=True))[::-1]
 							#print" ".join(guess)," ".join(map("% 5.02f".__mod__,prob))
 							#print{s:"%.02f"%(P(s,ratios)/o["p"])for s,o in prior.iteritems()},len(ratios)," ".join(map("%.04f".__mod__,ratios))
-							set_brightness(pymin(1,posterior[prior.keys().index("c")]/.8))
+							target_brightness=pymin(1,posterior[prior.keys().index("c")]/.8)
 					finally:
+						target_brightness=None
+						try:
+							brightness_thd.join()
+						except RuntimeError:
+							pass
 						set_brightness(1)
 				finally:
 					try:
