@@ -218,6 +218,7 @@ def iloc(frame,rects):
 	return ratios
 if __name__=="__main__":
 	from os import *
+	from stat import *
 	from fcntl import flock,LOCK_EX,LOCK_UN
 	from signal import SIGTERM,signal
 	from time import sleep
@@ -232,7 +233,7 @@ if __name__=="__main__":
 	try:
 		signal(SIGTERM,handler)
 		while True:
-			with fdopen(open(pidpath,O_RDWR|O_CREAT),"w+")as fd:
+			with fdopen(open(pidpath,O_RDWR|O_CREAT,S_IRUSR|S_IWUSR),"w+")as fd:
 				try:
 					flock(fd,LOCK_EX)
 					try:
