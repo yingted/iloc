@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# vim: set ts=4 sw=4 noet:
 pyany=any
 pymin=min
 pymax=max
@@ -10,6 +11,16 @@ from collections import deque
 from threading import Thread
 from Queue import Queue,Empty
 from time import time
+from ctypes import *
+from cPickle import dump,load,PickleError
+libX11=CDLL("libX11.so")
+libX11.XOpenDisplay.argtypes=c_char_p,
+libX11.XOpenDisplay.restype=c_void_p
+libX11.XCloseDisplay.argtypes=c_void_p,
+libXxf86vm=CDLL("libXxf86vm.so")
+libXxf86vm.XF86VidModeGetGammaRampSize.argtypes=c_void_p,c_int,POINTER(c_int)
+libXxf86vm.XF86VidModeGetGammaRamp.argtypes=c_void_p,c_int,c_int,POINTER(c_ushort),POINTER(c_ushort),POINTER(c_ushort)
+libXxf86vm.XF86VidModeSetGammaRamp.argtypes=c_void_p,c_int,c_int,POINTER(c_ushort),POINTER(c_ushort),POINTER(c_ushort)
 def _P(s,ratios):
 	if s in prior:
 		o=prior[s]
@@ -216,6 +227,13 @@ def iloc(frame,rects):
 	#	print"*"*30,"% 5.04f"%pymin(sorted(map(float.__sub__,ratios[1:],ratios[:-1]))),
 	#print"\t".join(map(str,ratios))
 	return ratios
+class X11Error(BaseException):
+	pass
+def x11_call(func,*args):
+	ret=func(*args)
+	if not ret:
+		raise X11Error()
+	return ret
 if __name__=="__main__":
 	from os import *
 	from stat import *
@@ -223,8 +241,10 @@ if __name__=="__main__":
 	from signal import SIGTERM,signal
 	from time import sleep
 	disp=environ["DISPLAY"]
-	if disp[0]!=":":
+	if disp[0]!=":":#require local
 		raise ValueError("invalid display",disp)
+	dpy=x11_call(libX11.XOpenDisplay,disp)
+	screen=cast(dpy+224,POINTER(c_int))[0]
 	pidpath="/tmp/iloc.%d.pid"%int(float(disp[1:]))
 	class SigTerm(BaseException):
 		pass
@@ -237,29 +257,37 @@ if __name__=="__main__":
 				try:
 					flock(fd,LOCK_EX)
 					try:
-						pid=int(fd.read())
-					except ValueError:
-						pass
+						data=load(fd)
+					except(EOFError,PickleError):
+						ramp_size=c_int()
+						libXxf86vm.XF86VidModeGetGammaRampSize(dpy,screen,byref(ramp_size))
+						ramp_t=c_ushort*ramp_size.value
+						ramps=[ramp_t()for _ in"rgb"]
+						libXxf86vm.XF86VidModeGetGammaRamp(*([dpy,screen,ramp_size]+ramps))
+						data={
+							'ramps':[map(int,ramp)for ramp in ramps],
+						}
 					else:
-						if pid==-1:
+						ramp_t=c_ushort*len(data['ramps'][0])
+						if data is None:
 							continue
 						try:
-							kill(pid,SIGTERM)
+							kill(data['pid'],SIGTERM)
 							break
 						except OSError:
 							pass
 					fd.seek(0)
 					fd.truncate()
-					fd.write("%d\n"%getpid())
+					data['pid']=getpid()
+					dump(data,fd)
 					fd.flush()
 					flock(fd,LOCK_UN)
 
-					from subprocess import call
 					decay=.95#don't use time
 					transition=decay*identity(3)+(1-decay)*ones((3,3))/3
 					posterior=ones(3)/3
 					def set_brightness(brightness):
-						call(("xrandr","--output","LVDS1","--brightness",str(brightness)))
+						libXxf86vm.XF86VidModeSetGammaRamp(*([dpy,screen,ramp_size]+[ramp_t(*map(int,map(round,map(brightness.__mul__,ramp))))for ramp in ramps]))
 					cur_brightness=target_brightness=1
 					def brightness_loop():
 						global cur_brightness
@@ -297,14 +325,21 @@ if __name__=="__main__":
 					try:
 						flock(fd,LOCK_EX)
 						fd.seek(0)
-						if int(fd.read())==getpid():
-							unlink(pidpath)
-							fd.seek(0)
-							fd.truncate()
-							fd.write("-1\n")
-							fd.flush()
+						try:
+							if load(fd)['pid']==getpid():
+								unlink(pidpath)
+								fd.seek(0)
+								fd.truncate()
+								dump(None,fd)
+								fd.flush()
+						except(EOFError,PickleError):
+							pass
+						except TypeError:
+							pass
 					except OSError:
 						pass
 			break
 	except SigTerm:
 		pass
+	finally:
+		libX11.XCloseDisplay(dpy)
