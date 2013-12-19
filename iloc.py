@@ -105,11 +105,11 @@ def iloc(frame,rects):
 	rects.sort()
 	ratios=[]
 	for i,(x,y,w,h)in enumerate(rects):
-		if not w or not h:
-			continue
 		y+=h/5
 		h=h*3/5
 		eye=frame[y:y+h,x:x+w]
+		if not eye.size:
+			continue
 		GaussianBlur(eye,(0,0),1,eye)
 		yrb=cvtColor(eye,COLOR_BGR2YCR_CB)
 		eye=yrb[:,:,0]
