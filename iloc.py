@@ -105,6 +105,8 @@ def iloc(frame,rects):
 	rects.sort()
 	ratios=[]
 	for i,(x,y,w,h)in enumerate(rects):
+		if not w or not h:
+			continue
 		y+=h/5
 		h=h*3/5
 		eye=frame[y:y+h,x:x+w]
