@@ -52,7 +52,7 @@ def iterratios():
 			if not job:
 				break
 			t,frame=job
-			for rect in bg_cc.detectMultiScale(frame,1.1,3,0,(40,40),(70,70)):
+			for rect in bg_cc.detectMultiScale(frame,1.1,1,0,(40,40),(70,70)):
 				rescan_out.put((t,tuple(rect)))
 	rescan_thd=Thread(target=rescan)
 	rescan_thd.daemon=True
@@ -75,7 +75,7 @@ def iterratios():
 				pass
 			for rect in rects:
 				ti,(X,Y,W,H)=rect
-				nearby=[(X-padding+x,Y-padding+y,w,h)for x,y,w,h in cc.detectMultiScale(frame[pymax(0,Y-padding):Y+H+padding,pymax(0,X-padding):X+W+padding],1.1,3,0,(int(.5+W/zr),int(.5+H/zr)),(int(.5+W*zr),int(.5+H*zr)))]
+				nearby=[(X-padding+x,Y-padding+y,w,h)for x,y,w,h in cc.detectMultiScale(frame[pymax(0,Y-padding):Y+H+padding,pymax(0,X-padding):X+W+padding],1.1,1,0,(int(.5+W/zr),int(.5+H/zr)),(int(.5+W*zr),int(.5+H*zr)))]
 				if nearby:
 					nrects.extend((t,rect)for rect in nearby)
 				elif ti>t-10:
