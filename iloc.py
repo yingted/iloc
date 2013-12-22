@@ -287,8 +287,8 @@ if __name__=="__main__":
 
 					decay=.95#don't use time
 					n=len(prior)
-					transition=decay*identity(n)+(1-decay)*ones((n,n))/n
-					posterior=ones(n)/n
+					posterior=[o['p']for o in prior.itervalues()]
+					transition=decay*identity(n)+(1-decay)*transpose(repeat([posterior],n,axis=0))
 					def set_brightness(brightness):
 						libXxf86vm.XF86VidModeSetGammaRamp(*([dpy,screen,ramp_size]+[ramp_t(*map(int,map(round,map((brightness**2*(3-2*brightness)).__mul__,ramp))))for ramp in ramps]))
 					cur_brightness=target_brightness=1
