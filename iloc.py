@@ -33,7 +33,7 @@ def _P(s,ratios):
 			p*=exp(-.5*((ratios[1]-ratios[0]-o["mu"])/sigma)**2)/(sigma*(2*pi)**.5)
 		return p
 	return 0
-def P(s,ratios,certainty=.8):
+def P(s,ratios,certainty=1.):
 	return certainty*_P(s,ratios)+(1-certainty)*prior[s]["p"]
 cascade="/usr/share/OpenCV/haarcascades/haarcascade_eye_tree_eyeglasses.xml"
 def iterratios():
@@ -286,10 +286,11 @@ if __name__=="__main__":
 					flock(fd,LOCK_UN)
 
 					decay=.95#don't use time
-					transition=decay*identity(3)+(1-decay)*ones((3,3))/3
-					posterior=ones(3)/3
+					n=len(prior)
+					posterior=[o['p']for o in prior.itervalues()]
+					transition=decay*identity(n)+(1-decay)*repeat(posterior,n).reshape((n,n))
 					def set_brightness(brightness):
-						libXxf86vm.XF86VidModeSetGammaRamp(*([dpy,screen,ramp_size]+[ramp_t(*map(int,map(round,map(brightness.__mul__,ramp))))for ramp in ramps]))
+						libXxf86vm.XF86VidModeSetGammaRamp(*([dpy,screen,ramp_size]+[ramp_t(*map(int,map(round,map((brightness**2*(3-2*brightness)).__mul__,ramp))))for ramp in ramps]))
 					cur_brightness=target_brightness=1
 					def brightness_loop():
 						global cur_brightness
@@ -315,7 +316,7 @@ if __name__=="__main__":
 							#guess,prob=zip(*sorted(zip(posterior,prior),reverse=True))[::-1]
 							#print" ".join(guess)," ".join(map("% 5.02f".__mod__,prob))
 							#print{s:"%.02f"%(P(s,ratios)/o["p"])for s,o in prior.iteritems()},len(ratios)," ".join(map("%.04f".__mod__,ratios))
-							target_brightness=pymin(1,posterior[prior.keys().index("c")]/.8)
+							target_brightness=pymin(1,posterior[prior.keys().index("c")])
 					finally:
 						target_brightness=None
 						try:
