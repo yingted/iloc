@@ -116,7 +116,7 @@ def iloc(frame,rects):
 		eye=frame[y:y+h,x:x+w]
 		if not eye.size:
 			continue
-		GaussianBlur(eye,(3,3),1,eye)
+		GaussianBlur(eye,(0,0),1,eye)
 		yrb=cvtColor(eye,COLOR_BGR2YCR_CB)
 		eye=yrb[:,:,0]
 
