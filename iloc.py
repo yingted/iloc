@@ -13,6 +13,8 @@ from Queue import Queue,Empty
 from time import time
 from ctypes import *
 from cPickle import dump,load,PickleError
+from scipy.optimize import fmin
+from numpy.lib import mgrid
 libX11=CDLL("libX11.so")
 libX11.XOpenDisplay.argtypes=c_char_p,
 libX11.XOpenDisplay.restype=c_void_p
@@ -36,9 +38,11 @@ def _P(s,ratios):
 def P(s,ratios,certainty=1.):
 	return certainty*_P(s,ratios)+(1-certainty)*prior[s]["p"]
 cascade="/usr/share/OpenCV/haarcascades/haarcascade_eye_tree_eyeglasses.xml"
+cascade_face="/usr/share/OpenCV/haarcascades/haarcascade_frontalface_default.xml"
 def iterratios():
 	cap=VideoCapture(0)
 	cc=CascadeClassifier(cascade)
+	bg_face=CascadeClassifier(cascade_face)
 	bg_cc=CascadeClassifier(cascade)
 	rects=[]
 	padding=20
@@ -52,8 +56,15 @@ def iterratios():
 			if not job:
 				break
 			t,frame=job
-			for rect in bg_cc.detectMultiScale(frame,1.1,3,0,(40,40),(70,70)):
-				rescan_out.put((t,tuple(rect)))
+			faces=bg_face.detectMultiScale(frame,1.3,2,0,(150,150),(350,350))
+			ofs=array([0,0,0,0])
+			if len(faces)==1:
+				x,y,w,h=faces[0]
+				ofs[:2]=x,y+h/5
+				frame=frame[ofs[1]:y+(3*h+2)/5,ofs[0]:x+w]
+			rects=bg_cc.detectMultiScale(frame,1.1,1,0,(40,40),(70,70))
+			for rect in rects:
+				rescan_out.put((t,tuple(ofs+rect)))
 	rescan_thd=Thread(target=rescan)
 	rescan_thd.daemon=True
 	rescan_thd.start()
@@ -97,11 +108,6 @@ def iterratios():
 	finally:
 		rescan_in_replace(None)
 def iloc(frame,rects):
-	axis_max=1.3
-	axis_factor=axis_max+1./axis_max
-	area_fudge=5
-	mid_hi_ratio=.34#.5
-
 	rects.sort()
 	ratios=[]
 	for i,(x,y,w,h)in enumerate(rects):
@@ -110,120 +116,57 @@ def iloc(frame,rects):
 		eye=frame[y:y+h,x:x+w]
 		if not eye.size:
 			continue
-		GaussianBlur(eye,(0,0),1,eye)
+		GaussianBlur(eye,(3,3),1,eye)
 		yrb=cvtColor(eye,COLOR_BGR2YCR_CB)
 		eye=yrb[:,:,0]
 
-		eye2=eye.astype("int32")-GaussianBlur(eye,(0,0),(w*h)**.5*.5)
-		eye2-=eye2.min()
-		eye2=(eye2*255/eye2.max()).astype("uint8")
-		eye=eye2
+		#eye2=eye.astype("int32")-GaussianBlur(eye,(0,0),(w*h)**.5*.5)
+		#eye2-=eye2.min()
+		#eye2=(eye2*255/eye2.max()).astype("uint8")
+		#eye=eye2
 
-		rectangle(frame,(x,y),(x+w,y+h),(0,255,0))
-		lo=eye.min()/255.
-		hi=eye.max()/255.
-		k=1./(hi-lo)
-		lut=(array([3*((x-lo)*k)**2-2*((x-lo)*k)**3 if lo<x<hi else cmp(x,lo)for x in linspace(0,1,num=256)])*256).clip(0,255).astype("uint8")
-		eye=LUT(eye,lut)
+		#rectangle(frame,(x,y),(x+w,y+h),(0,255,0))
+		#lut=(array([3*((x-lo)*k)**2-2*((x-lo)*k)**3 if lo<x<hi else cmp(x,lo)for x in linspace(0,1,num=256)])*256).clip(0,255).astype("uint8")
+		#eye=LUT(eye,lut)
 
-		cum=concatenate((zeros((h,1)),eye.cumsum(1)),1)
-		def subrows(bounds):
-			xl,yl,xh,yh=bounds
-			for yi in xrange(yl,yh):
-				dx=(((xh-xl)*(yh-yl))**2-((2*yi+1-yl-yh)*(xh-xl))**2)**.5/(yh-yl)
-				pos=yi,pymax(0,int((xh+xl+1-dx)*.5)),pymin(w,int((xh+xl+1+dx)*.5)+1)
-				if pos[1]<pos[2]:
-					yield pos
-		def integrate(bounds):
-			xl,yl,xh,yh=bounds
-			if xl<0 or yl<0 or xh>w or yh>h or(xh-xl)**2+(yh-yl)**2+area_fudge>((xh-xl)*(yh-yl)+area_fudge)*axis_factor:
-				return float("nan")
-			s=0.
-			for yi,xs,xe in subrows(bounds):
-				s+=cum[yi][xe]-cum[yi][xs]
-			area=(xh-xl)*(yh-yl)
-			return s/area if area else float("nan")
+		# a b
+		# c d
+		eye=eye.astype("int")
+		a=eye[:-1,:-1]
+		b=eye[:-1,1:]
+		c=eye[1:,:-1]
+		d=eye[1:,1:]
+		w=255*4-(a+b+c+d) # times 4
+		gi=c+d-a-b # times 4
+		gj=b+d-a-c
+		good=gi**2+gj**2>35**2
 
-		ratio_hi=5.5
-		ratio_mid=3
-		bounds=array((w/2,h/2,w/2+1,h/2+1))
-		count_hi=count_mid=0
-		dirs=diag((-1,-1,1,1))
-		for k in xrange(w*h):
-			a=[integrate(bounds+delta)for delta in dirs]
-			j=nanargmin(a)
-			if isnan(j)or(k>3 and a[j]>ratio_hi):
-				break
-			bounds+=dirs[j]
-			count_mid+=a[j]<=ratio_mid
-			count_hi+=1
+		xi,xj=mgrid[map(slice,eye.shape)]
+		gi_good=gi[good]
+		gj_good=gj[good]
+		xi_good=xi[good]
+		xj_good=xj[good]
 
-		if count_mid<=mid_hi_ratio*count_hi:
-			continue
-
-		eye=eye2
-
-		xl,yl,xh,yh=bounds
-		k=.8
-		r=.5*.4
-		#pos=lambda*p:tuple(int(round(v))for v in p)
-		#ellipse(eye,pos((xh+xl)*.5-(xh-xl)*k,(yh+yl)*.5),pos((xh-xl)*r,(yh-yl)*r),0,0,360,(255,))
-		#ellipse(eye,pos((xh+xl)*.5+(xh-xl)*k,(yh+yl)*.5),pos((xh-xl)*r,(yh-yl)*r),0,0,360,(255,))
-		#def shift(bounds,k,r=2*r):
-		#	bounds=bounds.reshape((2,2))
-		#	ctr=bounds.mean(0)
-		#	return(((bounds-ctr)*r+ctr+[bounds[:,0].ptp()*k,0]).flatten()+.5).astype("int32")
-		#for k in-k,k:
-		#	xl,yl,xh,yh=nbounds=shift(bounds,k)
-		#	ellipse(eye,((xh+xl)/2,(yh+yl)/2),((xh-xl)/2,(yh-yl)/2),0,0,360,(255,))
-		#	#print"% 5.02f"%integrate(nbounds)
-		#	print list(eye[yi,xs:xe].max()for yi,xs,xe in subrows(nbounds))
-		#for sgn in-1,1:
-		#	nbounds=map(tuple,shift(bounds,1.2*sgn,1.8).reshape((2,2)))
-		#	rectangle(eye,nbounds[-1],nbounds[1],(255,))
-		at=lambda(x,y):int(eye[int(y),int(x)])
-		#_pts=[]
-		dists=[]
-		for xi,sgn in(xl,-1),(xh,1):
-			opos=array([xi+sgn*1.5,bounds[1::2].mean()])
-			pos=opos.copy()
-			vel=array([sgn,0.])
-			best=at(pos)
-			seen=set()
-			#__pts=[]
-			for j in xrange(20):#should take 20
-				#__pts.append(pos)
-				npos=pos+vel
-				if sum((npos-opos)**2)**.5>(w*h)**.5*.25:# or(j==1 and at(npos)<100):
-					pos=opos
-					break
-				try:
-					best=pymax(best,at(npos))
-				except IndexError:
-					pos=opos
-					break
-				if best-at(npos)>10:
-					break
-				pos=npos
-				grad=zeros(2)
-				for delta in concatenate((identity(2),-identity(2))):
-					try:
-						grad+=delta*at(pos+delta)
-					except IndexError:
-						continue
-				vel+=grad*.01
-			#if all(pos!=opos):
-			#	_pts.extend(__pts)
-			dists.append(sum((pos-opos)**2)**.5)
-		#ellipse(eye,((xh+xl)/2,(yh+yl)/2),((xh-xl)/2,(yh-yl)/2),0,0,360,(255,))
-		#for x,y in _pts:
-		#	try:
-		#		eye[y,x]=0
-		#	except IndexError:
-		#		pass
-		#imshow("eye%d"%i,eye)
-		if sum(dists):
-			ratios.append((dists[0]+(xh-xl)*.5)/(sum(dists)+xh-xl))#accurate enough
+		def objective(p):
+			ci,cj=clip(p,(0,0),w.shape)
+			di=xi_good-ci
+			dj=xj_good-cj
+			abs_d=hypot(di,dj)
+			i=pymin(w.shape[0],int(ci))
+			j=pymin(w.shape[1],int(cj))
+			return-(
+				+w[i][j]*(1-(ci-i))*(1-(cj-j))
+				+w[i][j+1]*(1-(ci-i))*(cj-j)
+				+w[i+1][j]*(ci-i)*(1-(cj-j))
+				+w[i+1][j+1]*(ci-i)*(cj-j)
+			)*(dot(di/abs_d,gi_good)+dot(dj/abs_d,gj_good))
+		ci,cj=fmin(objective,(eye.shape[0]*.5,eye.shape[1]*.5),xtol=.01,disp=False)
+		#circle(frame,(int(round(x+.5+cj)),int(round(y+.5+ci))),1,(255,0,0),3)
+		#for _i,_row in enumerate(good):
+		#	for _j,_v in enumerate(_row):
+		#		if _v:
+		#			frame[y+_i][x+_j]=(0,0,255)
+		ratios.append((.5+cj)/eye.shape[1])
 	#print"\t".join(map("% 5.04f".__mod__,ratios)),
 	#if len(ratios)>1:# and pymin(sorted(map(float.__sub__,ratios[1:],ratios[:-1])))<.11:
 	#	print"*"*30,"% 5.04f"%pymin(sorted(map(float.__sub__,ratios[1:],ratios[:-1]))),
@@ -303,9 +246,13 @@ if __name__=="__main__":
 							sleep(1/60.)
 					brightness_thd=Thread(target=brightness_loop)
 					brightness_thd.daemon=True
+					#_len_0=_len_1=_len_2=0
 					try:
 						brightness_thd.start()
 						for ratios in iterratios():
+							#_len_0+=1
+							#_len_1+=len(ratios)
+							#_len_2+=len(ratios)**2
 							posterior=dot(transition,posterior)
 							posterior*=array([P(s,ratios)/o["p"]for s,o in prior.iteritems()])
 							if not posterior.sum():
@@ -318,6 +265,9 @@ if __name__=="__main__":
 							#print{s:"%.02f"%(P(s,ratios)/o["p"])for s,o in prior.iteritems()},len(ratios)," ".join(map("%.04f".__mod__,ratios))
 							target_brightness=pymin(1,posterior[prior.keys().index("c")])
 					finally:
+						#_mu=1.*_len_1/_len_0
+						#_sigma=(1.*_len_2/_len_0-_mu**2)**.5
+						#print "mu",_mu,"sigma",_sigma,"mu_sigma",_sigma/(_len_0-1)**.5
 						target_brightness=None
 						try:
 							brightness_thd.join()
