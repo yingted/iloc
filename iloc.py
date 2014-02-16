@@ -114,8 +114,8 @@ def iterratios():
 	finally:
 		rescan_in_replace(None)
 def iloc(frame,rects):
-	rects=[(x,y,w,h)for x,y,w,h in rects if(diff(clip((x,x+w,y,y+h),(0,0),frame.shape).reshape(2,2)).reshape(2)>0).all()]
-	rects.sort(key=lambda x,y,w,h:h)
+	rects=[(x,y,w,h)for x,y,w,h in rects if(diff(clip((x,x+w,y,y+h),0,frame.shape[:1]*2+frame.shape[1:2]*2).reshape(2,2)).reshape(2)>0).all()]
+	rects.sort(key=lambda rect:rect[3])
 	rects[2:]=[]
 	rects.sort()
 	ratios=[]
