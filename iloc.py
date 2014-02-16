@@ -152,8 +152,8 @@ def iloc(frame,rects):
 			di=xi_good-ci
 			dj=xj_good-cj
 			abs_d=hypot(di,dj)
-			i=pymin(w.shape[0],int(ci))
-			j=pymin(w.shape[1],int(cj))
+			i=pymin(w.shape[0]-1,int(ci))
+			j=pymin(w.shape[1]-1,int(cj))
 			return-(
 				+w[i][j]*(1-(ci-i))*(1-(cj-j))
 				+w[i][j+1]*(1-(ci-i))*(cj-j)
