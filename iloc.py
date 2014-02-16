@@ -58,12 +58,10 @@ def iterratios():
 			if not job:
 				break
 			t,frame=job
-			faces=bg_face.detectMultiScale(frame,1.3,2,0,(150,150),(350,350))
+			faces=bg_face.detectMultiScale(frame,1.3,1,0,(150,150),(350,350))
 			ofs=array([0,0,0,0])
-			if __debug__:
-				print"#"*10*len(faces)
-			if len(faces)==1:
-				x,y,w,h=faces[0]
+			if len(faces):
+				x,y,w,h=faces[argmax(faces[:,2]*faces[:,3])]
 				ofs[:2]=x,y+h/4
 				frame=frame[ofs[1]:y+3*h/5,ofs[0]:x+w]
 			rects=bg_cc.detectMultiScale(frame,1.1,1,0,(40,40),(70,70))
@@ -103,7 +101,7 @@ def iterratios():
 			yield iloc(frame,[rect for ti,rect in rects if ti==t])
 
 			if __debug__:
-				for rect in face.detectMultiScale(frame,1.3,2,0,(150,150),(350,350)):
+				for rect in face.detectMultiScale(frame,1.3,1,0,(150,150),(350,350)):
 					x,y,w,h=rect
 					rectangle(frame,(x,y),(x+w,y+h),(255,0,0))
 				imshow("",frame)
@@ -116,6 +114,9 @@ def iterratios():
 	finally:
 		rescan_in_replace(None)
 def iloc(frame,rects):
+	rects=[(x,y,w,h)for x,y,w,h in rects if(diff(clip((x,x+w,y,y+h),(0,0),frame.shape).reshape(2,2)).reshape(2)>0).all()]
+	rects.sort(key=lambda x,y,w,h:h)
+	rects[2:]=[]
 	rects.sort()
 	ratios=[]
 	for i,(x,y,w,h)in enumerate(rects):
@@ -124,8 +125,7 @@ def iloc(frame,rects):
 		y+=h/5
 		h=h*3/5
 		eye=frame[y:y+h,x:x+w]
-		if not eye.size:
-			continue
+		assert eye.size
 
 		GaussianBlur(eye,(0,0),.8,eye)
 		yrb=cvtColor(eye,COLOR_BGR2YCR_CB)
@@ -269,7 +269,9 @@ if __name__=="__main__":
 					posterior=[o['p']for o in prior.itervalues()]
 					transition=decay*identity(n)+(1-decay)*repeat(posterior,n).reshape((n,n))
 					def set_brightness(brightness):
-						pass#libXxf86vm.XF86VidModeSetGammaRamp(*([dpy,screen,ramp_size]+[ramp_t(*map(int,map(round,map((brightness**2*(3-2*brightness)).__mul__,ramp))))for ramp in ramps]))
+						libXxf86vm.XF86VidModeSetGammaRamp(*([dpy,screen,ramp_size]+[ramp_t(*map(int,map(round,map((brightness**2*(3-2*brightness)).__mul__,ramp))))for ramp in ramps]))
+					if __debug__:
+						set_brightness=float
 					cur_brightness=target_brightness=1
 					def brightness_loop():
 						global cur_brightness
