@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python -O
 # vim: set ts=4 sw=4 noet:
 pyany=any
 pymin=min
@@ -42,8 +42,10 @@ cascade_face="/usr/share/OpenCV/haarcascades/haarcascade_frontalface_default.xml
 def iterratios():
 	cap=VideoCapture(0)
 	cc=CascadeClassifier(cascade)
-	bg_face=CascadeClassifier(cascade_face)
 	bg_cc=CascadeClassifier(cascade)
+	if __debug__:
+		face=CascadeClassifier(cascade_face)
+	bg_face=CascadeClassifier(cascade_face)
 	rects=[]
 	padding=20
 	zr=1.15
@@ -58,10 +60,12 @@ def iterratios():
 			t,frame=job
 			faces=bg_face.detectMultiScale(frame,1.3,2,0,(150,150),(350,350))
 			ofs=array([0,0,0,0])
+			if __debug__:
+				print"#"*10*len(faces)
 			if len(faces)==1:
 				x,y,w,h=faces[0]
-				ofs[:2]=x,y+h/5
-				frame=frame[ofs[1]:y+(3*h+2)/5,ofs[0]:x+w]
+				ofs[:2]=x,y+h/4
+				frame=frame[ofs[1]:y+3*h/5,ofs[0]:x+w]
 			rects=bg_cc.detectMultiScale(frame,1.1,1,0,(40,40),(70,70))
 			for rect in rects:
 				rescan_out.put((t,tuple(ofs+rect)))
@@ -98,31 +102,42 @@ def iterratios():
 			rescan_in_replace((t,frame))
 			yield iloc(frame,[rect for ti,rect in rects if ti==t])
 
-			#imshow("",frame)
-			#while True:
-			#	k=waitKey(1)
-			#	if k in(-1,27):
-			#		break
-			#if k==27:
-			#	break
+			if __debug__:
+				for rect in face.detectMultiScale(frame,1.3,2,0,(150,150),(350,350)):
+					x,y,w,h=rect
+					rectangle(frame,(x,y),(x+w,y+h),(255,0,0))
+				imshow("",frame)
+				while True:
+					k=waitKey(1)
+					if k in(-1,27):
+						break
+				if k==27:
+					break
 	finally:
 		rescan_in_replace(None)
 def iloc(frame,rects):
 	rects.sort()
 	ratios=[]
 	for i,(x,y,w,h)in enumerate(rects):
-		x-=w/8
-		w+=2*w/8
+		x,x_w=clip((x-w/8,x+w+w/8),0,frame.shape[1])
+		w=x_w-x
 		y+=h/5
 		h=h*3/5
 		eye=frame[y:y+h,x:x+w]
 		if not eye.size:
 			continue
-		GaussianBlur(eye,(0,0),1,eye)
+
+		GaussianBlur(eye,(0,0),.8,eye)
 		yrb=cvtColor(eye,COLOR_BGR2YCR_CB)
 		eye=yrb[:,:,0]
 
-		#rectangle(frame,(x,y),(x+w,y+h),(0,255,0))
+		if __debug__:
+			rectangle(frame,(x,y),(x+w,y+h),(0,255,0))
+
+		# high pass
+		eye2=eye.astype("int32")-GaussianBlur(eye,(0,0),(w*h)**.5*.2)
+		eye2-=eye2.min()
+		eye=(eye2*255/eye2.max()).astype("uint8")
 
 		# remove AGC
 		lo=eye.min()
@@ -142,7 +157,8 @@ def iloc(frame,rects):
 		wij=255*4-(a+b+c+d) # times 4
 		gi=c+d-a-b # times 4
 		gj=b+d-a-c
-		good=gi**2+gj**2>30**2
+		squared=1.7*gi**2+gj**2
+		good=squared>percentile(squared,80)
 
 		xi,xj=mgrid[map(slice,eye.shape)]
 		gi_good=gi[good]
@@ -165,23 +181,26 @@ def iloc(frame,rects):
 					+wij[i+1][j+1]*(ci-i)*(cj-j)
 				)*(dot(di/abs_d,gi_good)+dot(dj/abs_d,gj_good))
 		ci,cj=fmin(objective,(eye.shape[0]*.5,eye.shape[1]*.5),xtol=.01,disp=False)
-		#circle(frame,(int(round(x+.5+cj)),int(round(y+.5+ci))),1,(255,0,0),3)
-		#for _i,_row in enumerate(good):
-		#	for _j,_v in enumerate(_row):
-		#		if _v:
-		#			frame[y+_i][x+_j]=(0,0,255)#actually (.5,.5) too low
+		if __debug__:
+			circle(frame,(int(round(x+.5+cj)),int(round(y+.5+ci))),1,(255,0,0),3)
+			for _i,_row in enumerate(good):
+				for _j,_v in enumerate(_row):
+					if _v:
+						frame[y+_i][x+_j]=(0,0,255)#actually (.5,.5) too low
 
 		contours,_=findContours(good.astype("uint8"),RETR_EXTERNAL,CHAIN_APPROX_NONE)
-		eps=5
+		eps=int(round(hypot(w,h)*.1))
+		perimeter=.25*hypot(w,h)
 		lo=cj
 		hi=lo+1
 		for i,contour in enumerate(contours):
-			if((eps<=contour[:,0,0])&(contour[:,0,0]<w-eps)&(eps<=contour[:,0,1])&(contour[:,0,1]<h-eps)).sum()<30:
+			if((eps<=contour[:,0,0])&(contour[:,0,0]<w-eps)&(eps<=contour[:,0,1])&(contour[:,0,1]<h-eps)).sum()<perimeter:
 				continue
-			lo=pymin(lo,contour[:,0,0].min())
-			hi=pymax(hi,contour[:,0,0].max())
-			#contour[:,0]+=[x,y]
-			#drawContours(frame,contours,i,(0,255,255))
+			lo=pymin(lo,pymax(eps,contour[:,0,0].min()))
+			hi=pymax(hi,pymin(w-eps-1,contour[:,0,0].max()))
+			if __debug__:
+				contour[:,0]+=[x,y]
+				drawContours(frame,contours,i,(0,255,255))
 
 		ratios.append((.5+cj-lo)/(hi-lo))
 	#print"\t".join(map("% 5.04f".__mod__,ratios)),
