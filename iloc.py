@@ -157,12 +157,13 @@ def iloc(frame,rects):
 			abs_d=hypot(di,dj)
 			i=pymin(wij.shape[0]-2,int(ci))
 			j=pymin(wij.shape[1]-2,int(cj))
-			return-(
-				+wij[i][j]*(1-(ci-i))*(1-(cj-j))
-				+wij[i][j+1]*(1-(ci-i))*(cj-j)
-				+wij[i+1][j]*(ci-i)*(1-(cj-j))
-				+wij[i+1][j+1]*(ci-i)*(cj-j)
-			)*(dot(di/abs_d,gi_good)+dot(dj/abs_d,gj_good))
+			with errstate(divide="ignore",invalid="ignore"):
+				return-(
+					+wij[i][j]*(1-(ci-i))*(1-(cj-j))
+					+wij[i][j+1]*(1-(ci-i))*(cj-j)
+					+wij[i+1][j]*(ci-i)*(1-(cj-j))
+					+wij[i+1][j+1]*(ci-i)*(cj-j)
+				)*(dot(di/abs_d,gi_good)+dot(dj/abs_d,gj_good))
 		ci,cj=fmin(objective,(eye.shape[0]*.5,eye.shape[1]*.5),xtol=.01,disp=False)
 		#circle(frame,(int(round(x+.5+cj)),int(round(y+.5+ci))),1,(255,0,0),3)
 		#for _i,_row in enumerate(good):
