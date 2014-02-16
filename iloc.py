@@ -111,6 +111,8 @@ def iloc(frame,rects):
 	rects.sort()
 	ratios=[]
 	for i,(x,y,w,h)in enumerate(rects):
+		x-=w/8
+		w+=2*w/8
 		y+=h/5
 		h=h*3/5
 		eye=frame[y:y+h,x:x+w]
@@ -120,14 +122,15 @@ def iloc(frame,rects):
 		yrb=cvtColor(eye,COLOR_BGR2YCR_CB)
 		eye=yrb[:,:,0]
 
-		#eye2=eye.astype("int32")-GaussianBlur(eye,(0,0),(w*h)**.5*.5)
-		#eye2-=eye2.min()
-		#eye2=(eye2*255/eye2.max()).astype("uint8")
-		#eye=eye2
-
 		#rectangle(frame,(x,y),(x+w,y+h),(0,255,0))
-		#lut=(array([3*((x-lo)*k)**2-2*((x-lo)*k)**3 if lo<x<hi else cmp(x,lo)for x in linspace(0,1,num=256)])*256).clip(0,255).astype("uint8")
-		#eye=LUT(eye,lut)
+
+		# remove AGC
+		lo=eye.min()
+		hi=eye.max()
+		k=1./(hi-lo)
+		lut=(array([3*((v-lo)*k)**2-2*((v-lo)*k)**3 if lo<v<hi else cmp(v,lo)for v in linspace(0,255,num=256)])*256).clip(0,255).astype("uint8")
+		eye=LUT(eye,lut)
+		#imshow("eye%d"%i,eye)
 
 		# a b
 		# c d
@@ -136,10 +139,10 @@ def iloc(frame,rects):
 		b=eye[:-1,1:]
 		c=eye[1:,:-1]
 		d=eye[1:,1:]
-		w=255*4-(a+b+c+d) # times 4
+		wij=255*4-(a+b+c+d) # times 4
 		gi=c+d-a-b # times 4
 		gj=b+d-a-c
-		good=gi**2+gj**2>7**2
+		good=gi**2+gj**2>30**2
 
 		xi,xj=mgrid[map(slice,eye.shape)]
 		gi_good=gi[good]
@@ -148,25 +151,38 @@ def iloc(frame,rects):
 		xj_good=xj[good]
 
 		def objective(p):
-			ci,cj=clip(p,(0,0),(w.shape[0]-1,w.shape[1]-1))
+			ci,cj=clip(p,(0,0),(wij.shape[0]-1,wij.shape[1]-1))
 			di=xi_good-ci
 			dj=xj_good-cj
 			abs_d=hypot(di,dj)
-			i=pymin(w.shape[0]-2,int(ci))
-			j=pymin(w.shape[1]-2,int(cj))
+			i=pymin(wij.shape[0]-2,int(ci))
+			j=pymin(wij.shape[1]-2,int(cj))
 			return-(
-				+w[i][j]*(1-(ci-i))*(1-(cj-j))
-				+w[i][j+1]*(1-(ci-i))*(cj-j)
-				+w[i+1][j]*(ci-i)*(1-(cj-j))
-				+w[i+1][j+1]*(ci-i)*(cj-j)
+				+wij[i][j]*(1-(ci-i))*(1-(cj-j))
+				+wij[i][j+1]*(1-(ci-i))*(cj-j)
+				+wij[i+1][j]*(ci-i)*(1-(cj-j))
+				+wij[i+1][j+1]*(ci-i)*(cj-j)
 			)*(dot(di/abs_d,gi_good)+dot(dj/abs_d,gj_good))
 		ci,cj=fmin(objective,(eye.shape[0]*.5,eye.shape[1]*.5),xtol=.01,disp=False)
 		#circle(frame,(int(round(x+.5+cj)),int(round(y+.5+ci))),1,(255,0,0),3)
 		#for _i,_row in enumerate(good):
 		#	for _j,_v in enumerate(_row):
 		#		if _v:
-		#			frame[y+_i][x+_j]=(0,0,255)
-		ratios.append((.5+cj)/eye.shape[1])
+		#			frame[y+_i][x+_j]=(0,0,255)#actually (.5,.5) too low
+
+		contours,_=findContours(good.astype("uint8"),RETR_EXTERNAL,CHAIN_APPROX_NONE)
+		eps=5
+		lo=cj
+		hi=lo+1
+		for i,contour in enumerate(contours):
+			if((eps<=contour[:,0,0])&(contour[:,0,0]<w-eps)&(eps<=contour[:,0,1])&(contour[:,0,1]<h-eps)).sum()<30:
+				continue
+			lo=pymin(lo,contour[:,0,0].min())
+			hi=pymax(hi,contour[:,0,0].max())
+			#contour[:,0]+=[x,y]
+			#drawContours(frame,contours,i,(0,255,255))
+
+		ratios.append((.5+cj-lo)/(hi-lo))
 	#print"\t".join(map("% 5.04f".__mod__,ratios)),
 	#if len(ratios)>1:# and pymin(sorted(map(float.__sub__,ratios[1:],ratios[:-1])))<.11:
 	#	print"*"*30,"% 5.04f"%pymin(sorted(map(float.__sub__,ratios[1:],ratios[:-1]))),
@@ -233,7 +249,7 @@ if __name__=="__main__":
 					posterior=[o['p']for o in prior.itervalues()]
 					transition=decay*identity(n)+(1-decay)*repeat(posterior,n).reshape((n,n))
 					def set_brightness(brightness):
-						libXxf86vm.XF86VidModeSetGammaRamp(*([dpy,screen,ramp_size]+[ramp_t(*map(int,map(round,map((brightness**2*(3-2*brightness)).__mul__,ramp))))for ramp in ramps]))
+						pass#libXxf86vm.XF86VidModeSetGammaRamp(*([dpy,screen,ramp_size]+[ramp_t(*map(int,map(round,map((brightness**2*(3-2*brightness)).__mul__,ramp))))for ramp in ramps]))
 					cur_brightness=target_brightness=1
 					def brightness_loop():
 						global cur_brightness
