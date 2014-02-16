@@ -139,7 +139,7 @@ def iloc(frame,rects):
 		w=255*4-(a+b+c+d) # times 4
 		gi=c+d-a-b # times 4
 		gj=b+d-a-c
-		good=gi**2+gj**2>35**2
+		good=gi**2+gj**2>7**2
 
 		xi,xj=mgrid[map(slice,eye.shape)]
 		gi_good=gi[good]
@@ -148,12 +148,12 @@ def iloc(frame,rects):
 		xj_good=xj[good]
 
 		def objective(p):
-			ci,cj=clip(p,(0,0),w.shape)
+			ci,cj=clip(p,(0,0),(w.shape[0]-1,w.shape[1]-1))
 			di=xi_good-ci
 			dj=xj_good-cj
 			abs_d=hypot(di,dj)
-			i=pymin(w.shape[0]-1,int(ci))
-			j=pymin(w.shape[1]-1,int(cj))
+			i=pymin(w.shape[0]-2,int(ci))
+			j=pymin(w.shape[1]-2,int(cj))
 			return-(
 				+w[i][j]*(1-(ci-i))*(1-(cj-j))
 				+w[i][j+1]*(1-(ci-i))*(cj-j)
