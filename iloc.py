@@ -64,7 +64,7 @@ def iterratios():
 				x,y,w,h=faces[argmax(faces[:,2]*faces[:,3])]
 				ofs[:2]=x,y+h/4
 				frame=frame[ofs[1]:y+3*h/5,ofs[0]:x+w]
-			rects=bg_cc.detectMultiScale(frame,1.1,1,0,(40,40),(70,70))
+			rects=bg_cc.detectMultiScale(frame,1.1,0,0,(40,40),(70,70))
 			for rect in rects:
 				rescan_out.put((t,tuple(ofs+rect)))
 	rescan_thd=Thread(target=rescan)
@@ -88,7 +88,7 @@ def iterratios():
 				pass
 			for rect in rects:
 				ti,(X,Y,W,H)=rect
-				nearby=[(X-padding+x,Y-padding+y,w,h)for x,y,w,h in cc.detectMultiScale(frame[pymax(0,Y-padding):Y+H+padding,pymax(0,X-padding):X+W+padding],1.1,3,0,(int(.5+W/zr),int(.5+H/zr)),(int(.5+W*zr),int(.5+H*zr)))]
+				nearby=[(X-padding+x,Y-padding+y,w,h)for x,y,w,h in cc.detectMultiScale(frame[pymax(0,Y-padding):Y+H+padding,pymax(0,X-padding):X+W+padding],1.1,1,0,(int(.5+W/zr),int(.5+H/zr)),(int(.5+W*zr),int(.5+H*zr)))]
 				if nearby:
 					nrects.extend((t,rect)for rect in nearby)
 				elif ti>t-10:
