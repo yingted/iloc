@@ -298,8 +298,8 @@ if __name__=="__main__":
 							posterior/=posterior.sum()
 							#print dict(zip(prior,posterior))
 							#print prior.items()[argmax(posterior)]
-							#guess,prob=zip(*sorted(zip(posterior,prior),reverse=True))[::-1]
-							#print" ".join(guess)," ".join(map("% 5.02f".__mod__,prob))
+							guess,prob=zip(*sorted(zip(posterior,prior),reverse=True))[::-1]
+							print" ".join(guess)," ".join(map("% 5.02f".__mod__,prob))
 							#print{s:"%.02f"%(P(s,ratios)/o["p"])for s,o in prior.iteritems()},len(ratios)," ".join(map("%.04f".__mod__,ratios))
 							target_brightness=pymin(1,posterior[prior.keys().index("c")])
 					finally:
