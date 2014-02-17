@@ -119,7 +119,7 @@ def iloc(frame,rects):
 		dx=w/8
 		dy=-h/5
 		bounds=x,x_w,y,y_h=clip((x-dx,x+w+dx,y-dy,y+h+dy),0,frame.shape[:1]*2+frame.shape[1:2]*2)
-		if(diff(bounds.reshape(2,2)).reshape(2)>0).all():
+		if(diff(bounds.reshape(2,2)).reshape(2)>1).all():
 			nrects.append((x,y,x_w-x,y_h-y))
 	rects=nrects
 	rects.sort(key=lambda rect:rect[3])
@@ -128,8 +128,6 @@ def iloc(frame,rects):
 	ratios=[]
 	for i,(x,y,w,h)in enumerate(rects):
 		eye=frame[y:y+h,x:x+w]
-		assert eye.size
-
 		GaussianBlur(eye,(0,0),.8,eye)
 		yrb=cvtColor(eye,COLOR_BGR2YCR_CB)
 		eye=yrb[:,:,0]
