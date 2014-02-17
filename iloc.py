@@ -114,16 +114,19 @@ def iterratios():
 	finally:
 		rescan_in_replace(None)
 def iloc(frame,rects):
-	rects=[(x,y,w,h)for x,y,w,h in rects if(diff(clip((x,x+w,y,y+h),0,frame.shape[:1]*2+frame.shape[1:2]*2).reshape(2,2)).reshape(2)>0).all()]
+	nrects=[]
+	for x,y,w,h in rects:
+		dx=w/8
+		dy=-h/5
+		bounds=x,x_w,y,y_h=clip((x-dx,x+w+dx,y-dy,y+h+dy),0,frame.shape[:1]*2+frame.shape[1:2]*2)
+		if(diff(bounds.reshape(2,2)).reshape(2)>0).all():
+			nrects.append((x,y,x_w-x,y_h-y))
+	rects=nrects
 	rects.sort(key=lambda rect:rect[3])
 	rects[2:]=[]
 	rects.sort()
 	ratios=[]
 	for i,(x,y,w,h)in enumerate(rects):
-		x,x_w=clip((x-w/8,x+w+w/8),0,frame.shape[1])
-		w=x_w-x
-		y+=h/5
-		h=h*3/5
 		eye=frame[y:y+h,x:x+w]
 		assert eye.size
 
