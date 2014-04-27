@@ -265,10 +265,18 @@ if __name__=="__main__":
 					fd.flush()
 					flock(fd,LOCK_UN)
 
-					decay=.95#don't use time
 					n=len(prior)
 					posterior=[o['p']for o in prior.itervalues()]
-					transition=decay*identity(n)+(1-decay)*repeat(posterior,n).reshape((n,n))
+					transition=identity(n)+.03#transition odds
+					for i,x in enumerate(prior.iterkeys()):
+						for j,y in enumerate(prior.iterkeys()):
+							if('n'in x)!=('n'in y):
+								if x=='n'+y:
+									transition[i,j]=.03#blink start odds
+								elif'n'+x==y:
+									transition[i,j]=.4#blink end odds
+								else:
+									transition[i,j]=0
 					def set_brightness(brightness):
 						libXxf86vm.XF86VidModeSetGammaRamp(*([dpy,screen,ramp_size]+[ramp_t(*map(int,map(round,map((brightness**2*(3-2*brightness)).__mul__,ramp))))for ramp in ramps]))
 					if __debug__:
@@ -293,9 +301,10 @@ if __name__=="__main__":
 							#_len_1+=len(ratios)
 							#_len_2+=len(ratios)**2
 							posterior=dot(transition,posterior)
-							posterior*=array([P(s,ratios)/o["p"]for s,o in prior.iteritems()])
-							if not posterior.sum():
-								posterior=ones(len(prior))
+							if len(ratios)!=2 or -.18<=ratios[1]-ratios[0]<=.04:
+								posterior*=array([P(s,ratios)/o["p"]for s,o in prior.iteritems()])
+								if not posterior.sum():
+									posterior=ones(len(prior))
 							posterior/=posterior.sum()
 							#print dict(zip(prior,posterior))
 							#print prior.items()[argmax(posterior)]

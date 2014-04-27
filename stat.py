@@ -7,7 +7,7 @@ a={}
 for x in argv[1:]:
 	lines=[array(map(float,line.split()))for line in open(x)]
 	x=basename(x)
-	deltas=[line[1]-line[0]for line in lines if len(line)==2]
+	deltas=[line[1]-line[0]for line in lines if len(line)==2 if -.18<=line[1]-line[0]<=.04]
 	a[x]={
 		"n":list(bincount(map(len,lines))/float(len(lines))),
 		"mu"if deltas else Exception:mean(deltas),
